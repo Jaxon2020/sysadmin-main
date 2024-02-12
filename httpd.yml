@@ -1,0 +1,51 @@
+---
+- name: Install, start httpd, and configure directories
+  hosts: all
+  become: yes
+  tasks:
+    - name: Install httpd
+      yum:
+        name: httpd
+        state: present
+
+    - name: Start and enable httpd
+      service:
+        name: httpd
+        state: started
+        enabled: yes
+
+    - name: Allow http service through firewall
+      firewalld:
+        service: http
+        permanent: yes
+        state: enabled
+      notify: Reload firewalld
+
+    - name: Change ownership of /etc/httpd to apache user and group
+      file:
+        path: /etc/httpd
+        owner: root
+        group: root
+        recurse: yes
+
+    - name: Change ownership of /var/www to apache user and group
+      file:
+        path: /var/www
+        owner: root
+        group: root
+        recurse: yes
+
+    - name: Set SELinux context for /var/www
+      sefcontext:
+        target: '/var/www(/.*)?'
+        setype: httpd_sys_content_t
+        state: present
+      when: ansible_selinux.status == "enabled"
+
+    - name: Apply SELinux context changes
+      command: restorecon -Rv /var/www
+      when: ansible_selinux.status == "enabled"
+
+  handlers:
+    - name: Reload firewalld
+      command: firewall-cmd --reload
