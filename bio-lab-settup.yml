@@ -1,0 +1,81 @@
+---
+- name: Configure Workstation and Active Directory Integration
+  hosts: all
+  become: yes  # This playbook needs to run with superuser privileges
+
+  tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 3600  # Cache valid for 1 hour to avoid repeated updates
+
+    - name: Install necessary packages for Active Directory integration and workstation setup
+      ansible.builtin.apt:
+        name:
+          - realmd
+          - sssd
+          - sssd-tools
+          - libnss-sss
+          - libpam-sss
+          - adcli
+          - samba-common-bin
+          - oddjob
+          - oddjob-mkhomedir
+          - packagekit
+          - curl
+          - openssh-server
+          - openjdk-11-jdk
+          - gimp
+          - gphoto2
+          - ffmpeg
+          - ffmpeg-doc
+          - vlc
+          - xsane
+          - entangle
+          - blender
+        state: present  # Ensures packages are installed
+      notify: restart sssd
+
+    - name: Enable mkhomedir
+      ansible.builtin.command:
+        cmd: pam-auth-update --enable mkhomedir
+        warn: no
+      notify: restart sssd
+
+    - name: Add 'xhost +local:' to xinitrc for X server configuration
+      lineinfile:
+        path: /etc/X11/xinit/xinitrc
+        line: 'xhost +local: # Allow local non-network connections to the X server'
+        insertafter: EOF
+        create: no
+      register: xhost_added
+
+    - name: Inform about the xhost addition
+      debug:
+        msg: "'xhost +local:' command was added to /etc/X11/xinit/xinitrc."
+      when: xhost_added.changed
+
+    - name: Download and install FIJI
+      block:
+        - name: Download FIJI
+          get_url:
+            url: https://downloads.imagej.net/fiji/latest/fiji-linux64.zip
+            dest: /tmp/fiji.zip
+
+        - name: Unzip FIJI
+          unarchive:
+            src: /tmp/fiji.zip
+            dest: /opt/
+            remote_src: yes
+
+        - name: Create symlink for FIJI
+          file:
+            src: /opt/Fiji.app/ImageJ-linux64
+            dest: /usr/local/bin/fiji
+            state: link
+
+  handlers:
+    - name: restart sssd
+      ansible.builtin.service:
+        name: sssd
+        state: restarted
